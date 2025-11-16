@@ -1,0 +1,324 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model - represents a user in the FriendBet app
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  email     String   @unique
+  password  String
+  points    Int      @default(100) // Starting points for new users
+  avatar    String?
+  isOnline  Boolean  @default(false)
+  lastSeen  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  betsCreated       Bet[]              @relation("BetCreator")
+  predictions       Prediction[]
+  sentFriendRequests     FriendConnection[] @relation("UserSentRequests")
+  receivedFriendRequests FriendConnection[] @relation("UserReceivedRequests")
+  chatMessages      ChatMessage[]
+  punishmentsAssigned Punishment[]     @relation("PunishmentAssignedBy")
+  punishmentsReceived Punishment[]     @relation("PunishmentReceiver")
+  powerups          Powerup[]
+  conversationsCreated Conversation[] @relation("ConversationCreator")
+  conversationMemberships ConversationMember[]
+  notifications     Notification[]
+  proofVotes        ProofVote[]
+
+  @@index([email])
+  @@index([username])
+}
+
+// FriendConnection - manages friend relationships between users
+model FriendConnection {
+  id        String   @id @default(cuid())
+  userId    String
+  friendId  String
+  status    FriendStatus @default(PENDING) // PENDING, ACCEPTED, REJECTED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user   User @relation("UserSentRequests", fields: [userId], references: [id], onDelete: Cascade)
+  friend User @relation("UserReceivedRequests", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, friendId])
+  @@index([userId])
+  @@index([friendId])
+}
+
+enum FriendStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+// Bet - the core betting entity
+model Bet {
+  id          String   @id @default(cuid())
+  creatorId   String
+  title       String
+  description String   @db.Text
+  deadline    DateTime
+  category    BetCategory
+  proofRequired ProofType @default(NONE) // NONE, IMAGE, VIDEO, TEXT
+  status      BetStatus @default(ACTIVE) // ACTIVE, COMPLETED, CANCELLED
+  result      BetResult? // WON, LOST (null if not yet completed)
+  proofUrl    String?
+  proofSubmittedAt DateTime? // When proof was uploaded
+  verificationRequired Boolean @default(false) // True if proof needs verification
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  creator      User           @relation("BetCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  predictions  Prediction[]
+  chatMessages ChatMessage[]
+  punishments  Punishment[]
+  proofVotes   ProofVote[]
+
+  @@index([creatorId])
+  @@index([status])
+  @@index([deadline])
+}
+
+enum BetCategory {
+  FITNESS
+  STUDY
+  GAMING
+  SOCIAL
+  WORK
+  FOOD
+  CHALLENGE
+  OTHER
+}
+
+enum ProofType {
+  NONE
+  IMAGE
+  VIDEO
+  TEXT
+}
+
+enum BetStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum BetResult {
+  WON
+  LOST
+}
+
+// Prediction - friends voting on a bet
+model Prediction {
+  id        String   @id @default(cuid())
+  betId     String
+  userId    String
+  choice    PredictionChoice // FOR (betting creator will succeed), AGAINST (will fail)
+  stake     Int      // Friend Points staked
+  payout    Int      @default(0) // Points won/lost after bet resolution
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  bet  Bet  @relation(fields: [betId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([betId, userId]) // Each user can only predict once per bet
+  @@index([betId])
+  @@index([userId])
+}
+
+enum PredictionChoice {
+  FOR
+  AGAINST
+}
+
+// ProofVote - bettors verify if proof is valid
+model ProofVote {
+  id        String   @id @default(cuid())
+  betId     String
+  userId    String
+  vote      ProofVoteChoice // ACCEPT (proof is valid), REJECT (proof is invalid)
+  createdAt DateTime @default(now())
+
+  // Relations
+  bet  Bet  @relation(fields: [betId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([betId, userId]) // Each user can only vote once per bet
+  @@index([betId])
+  @@index([userId])
+}
+
+enum ProofVoteChoice {
+  ACCEPT
+  REJECT
+}
+
+// Punishment - fun consequences when someone loses a bet
+model Punishment {
+  id          String   @id @default(cuid())
+  betId       String
+  receiverId  String   // The person who lost the bet
+  assignedById String?  // Friend who suggested this punishment
+  description String   @db.Text
+  type        PunishmentType
+  isCompleted Boolean  @default(false)
+  proofUrl    String?  // Proof of completing the punishment
+  votes       Int      @default(0) // Number of votes for this punishment
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  bet        Bet   @relation(fields: [betId], references: [id], onDelete: Cascade)
+  receiver   User  @relation("PunishmentReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  assignedBy User? @relation("PunishmentAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@index([betId])
+  @@index([receiverId])
+}
+
+enum PunishmentType {
+  NICKNAME
+  CHALLENGE
+  VIDEO
+  PHOTO
+  TASK
+  OTHER
+}
+
+// ChatMessage - communication around a bet or in conversations
+model ChatMessage {
+  id             String        @id @default(cuid())
+  betId          String?       // Optional - for bet-specific chats
+  conversationId String?       // Optional - for direct/group chats
+  senderId       String
+  message        String        @db.Text
+  type           MessageType   @default(TEXT)
+  createdAt      DateTime      @default(now())
+
+  // Relations
+  bet          Bet?          @relation(fields: [betId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([betId])
+  @@index([conversationId])
+  @@index([senderId])
+}
+
+// Conversation - for direct messages and group chats
+model Conversation {
+  id        String   @id @default(cuid())
+  type      ConversationType @default(DIRECT)
+  name      String?  // For group chats
+  creatorId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  creator  User                 @relation("ConversationCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  members  ConversationMember[]
+  messages ChatMessage[]
+
+  @@index([creatorId])
+  @@index([type])
+}
+
+// ConversationMember - tracks who's in each conversation
+model ConversationMember {
+  id             String   @id @default(cuid())
+  conversationId String
+  userId         String
+  joinedAt       DateTime @default(now())
+  lastReadAt     DateTime?
+
+  // Relations
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([conversationId])
+  @@index([userId])
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
+}
+
+enum MessageType {
+  TEXT
+  PUNISHMENT_SUGGESTION
+  SYSTEM
+}
+
+// Powerup - temporary advantages for winners
+model Powerup {
+  id        String   @id @default(cuid())
+  userId    String
+  type      PowerupType
+  value     Int      @default(10) // Percentage boost or multiplier
+  expiresAt DateTime
+  isUsed    Boolean  @default(false)
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+enum PowerupType {
+  STAKE_BOOST      // +X% more points when winning
+  SHIELD           // Avoid next punishment
+  DOUBLE_OR_NOTHING // 2x stakes on next bet
+  INSIDER_INFO     // See predictions before placing yours
+}
+
+// Notification - user notifications
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String   @db.Text
+  link      String?  // Optional link to navigate to
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+enum NotificationType {
+  BET_CREATED      // Friend created a new bet
+  BET_RESOLVED     // Your bet was resolved
+  PREDICTION_WON   // You won a prediction
+  PREDICTION_LOST  // You lost a prediction
+  FRIEND_REQUEST   // New friend request
+  PUNISHMENT_ASSIGNED // You got a punishment
+  CHAT_MESSAGE     // New chat message
+  SYSTEM           // System notification
+}
