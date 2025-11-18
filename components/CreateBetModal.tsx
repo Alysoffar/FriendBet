@@ -127,7 +127,7 @@ export default function CreateBetModal({ isOpen, onClose, onSubmit }: CreateBetM
                     }
                   `}
                 >
-                  {cat.emoji} {cat.value}
+                  {cat.label}
                 </button>
               ))}
             </div>
