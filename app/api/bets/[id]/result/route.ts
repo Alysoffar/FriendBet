@@ -122,27 +122,27 @@ export async function POST(
       ),
     ])
 
-    // If bet creator won, give bonus points and powerup (separate transaction)
+    // If bet creator won, give bonus points
     if (result === 'WON') {
       const bonusPoints = Math.floor(againstPool * 0.1) // 10% of losing pool
-      await prisma.$transaction([
-        prisma.user.update({
-          where: { id: currentUser.userId },
-          data: {
-            points: {
-              increment: bonusPoints,
-            },
+      await prisma.user.update({
+        where: { id: currentUser.userId },
+        data: {
+          points: {
+            increment: bonusPoints,
           },
-        }),
-        prisma.powerup.create({
-          data: {
-            userId: currentUser.userId,
-            type: 'STAKE_BOOST',
-            value: 10,
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-          },
-        }) as any,
-      ])
+        },
+      })
+      
+      // Create powerup separately
+      await prisma.powerup.create({
+        data: {
+          userId: currentUser.userId,
+          type: 'STAKE_BOOST',
+          value: 10,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+        },
+      })
     }
 
     return NextResponse.json({
