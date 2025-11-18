@@ -92,7 +92,7 @@ export async function POST(
     })
 
     // Update bet, predictions, and user points in transaction
-    const operations: any[] = [
+    await prisma.$transaction([
       // Update bet status
       prisma.bet.update({
         where: { id: params.id },
@@ -120,12 +120,12 @@ export async function POST(
           },
         })
       ),
-    ]
+    ])
 
-    // If bet creator won, give bonus points and powerup
+    // If bet creator won, give bonus points and powerup (separate transaction)
     if (result === 'WON') {
       const bonusPoints = Math.floor(againstPool * 0.1) // 10% of losing pool
-      operations.push(
+      await prisma.$transaction([
         prisma.user.update({
           where: { id: currentUser.userId },
           data: {
@@ -141,11 +141,9 @@ export async function POST(
             value: 10,
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
           },
-        })
-      )
+        }),
+      ])
     }
-
-    await prisma.$transaction(operations)
 
     return NextResponse.json({
       message: 'Bet resolved successfully',
