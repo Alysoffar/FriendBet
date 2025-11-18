@@ -49,8 +49,8 @@ export async function GET(request: NextRequest) {
 
     // Calculate for/against for each challenge
     const challengesWithStats = myChallenges.map(bet => {
-      const forBets = bet.predictions.filter(p => p.choice === 'YES').length
-      const againstBets = bet.predictions.filter(p => p.choice === 'NO').length
+      const forBets = bet.predictions.filter(p => p.choice === 'FOR').length
+      const againstBets = bet.predictions.filter(p => p.choice === 'AGAINST').length
       
       return {
         id: bet.id,
