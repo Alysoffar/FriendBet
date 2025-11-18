@@ -92,7 +92,7 @@ export async function POST(
     })
 
     // Update bet, predictions, and user points in transaction
-    const operations = [
+    const operations: any[] = [
       // Update bet status
       prisma.bet.update({
         where: { id: params.id },
