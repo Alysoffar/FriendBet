@@ -107,7 +107,7 @@ export default function CreateBetModal({ isOpen, onClose, onSubmit }: CreateBetM
             />
           </div>
 
-          {/* Category */}
+          {/* Category Selection */}
           <div>
             <label className="block text-sm font-semibold text-white mb-2">
               Category *
