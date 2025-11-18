@@ -92,26 +92,28 @@ export async function POST(
     })
 
     // Update bet, predictions, and user points in transaction
-    await prisma.$transaction([
+    await prisma.$transaction(async (tx) => {
       // Update bet status
-      prisma.bet.update({
+      await tx.bet.update({
         where: { id: params.id },
         data: {
           status: 'COMPLETED',
           result,
           proofUrl,
         },
-      }),
+      })
+
       // Update predictions with payouts
-      ...payoutUpdates.map(({ predictionId, payout }) =>
-        prisma.prediction.update({
+      for (const { predictionId, payout } of payoutUpdates) {
+        await tx.prediction.update({
           where: { id: predictionId },
           data: { payout },
         })
-      ),
+      }
+
       // Update user points
-      ...payoutUpdates.map(({ userId, payout }) =>
-        prisma.user.update({
+      for (const { userId, payout } of payoutUpdates) {
+        await tx.user.update({
           where: { id: userId },
           data: {
             points: {
@@ -119,31 +121,30 @@ export async function POST(
             },
           },
         })
-      ),
-    ])
+      }
 
-    // If bet creator won, give bonus points
-    if (result === 'WON') {
-      const bonusPoints = Math.floor(againstPool * 0.1) // 10% of losing pool
-      await prisma.user.update({
-        where: { id: currentUser.userId },
-        data: {
-          points: {
-            increment: bonusPoints,
+      // If bet creator won, give bonus points and powerup
+      if (result === 'WON') {
+        const bonusPoints = Math.floor(againstPool * 0.1) // 10% of losing pool
+        await tx.user.update({
+          where: { id: currentUser.userId },
+          data: {
+            points: {
+              increment: bonusPoints,
+            },
           },
-        },
-      })
-      
-      // Create powerup separately
-      await prisma.powerup.create({
-        data: {
-          userId: currentUser.userId,
-          type: 'STAKE_BOOST',
-          value: 10,
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-        },
-      })
-    }
+        })
+        
+        await tx.powerup.create({
+          data: {
+            userId: currentUser.userId,
+            type: 'STAKE_BOOST',
+            value: 10,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+          },
+        })
+      }
+    })
 
     return NextResponse.json({
       message: 'Bet resolved successfully',

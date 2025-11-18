@@ -20,7 +20,7 @@ export default function HomePage() {
   const [unreadCount, setUnreadCount] = useState(0)
   const { user, logout, isLoading, token } = useAuth()
   const router = useRouter()
-  const notificationRef = useRef<HTMLDivElement>(null)
+  const notificationRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
     if (!isLoading && !user) {
