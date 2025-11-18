@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
       take: 50,
     })
 
-    // Calculate for/against for each challenge
+    // Calculate for/against counts for each challenge
     const challengesWithStats = myChallenges.map(bet => {
       const forBets = bet.predictions.filter(p => p.choice === 'FOR').length
       const againstBets = bet.predictions.filter(p => p.choice === 'AGAINST').length
